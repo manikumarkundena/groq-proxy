@@ -1,38 +1,74 @@
-import Groq from "groq-sdk";
+export const config = {
+  runtime: "edge",
+};
 
-export default async function handler(req, res) {
+export default async function handler(req) {
+  // Only POST allowed
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Only POST allowed" }),
+      {
+        status: 405,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS"
+        }
+      }
+    );
+  }
+
+  // Handle OPTIONS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+      }
+    });
+  }
+
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Only POST allowed" });
-    }
+    const body = await req.json();
 
-    const messages = req.body.messages;
-    if (!messages) {
-      return res.status(400).json({ error: "messages missing" });
-    }
-
-    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-    const completion = await client.chat.completions.create({
-      model: "llama3-8b-8192",
-      messages,
-      temperature: 0.8
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "llama3-8b-8192",
+        messages: body.messages
+      })
     });
 
-    const content = completion?.choices?.[0]?.message?.content;
+    const data = await groqRes.json();
 
-    return res.status(200).json({
-      choices: [
-        {
-          message: { content }
-        }
-      ]
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",    // ⭐ FIX FIX FIX
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS"
+      }
     });
   } catch (err) {
-    console.error("Proxy Error:", err);
-    return res.status(500).json({
-      error: "Groq Proxy Error",
-      details: err.message
-    });
+    return new Response(
+      JSON.stringify({ error: "Groq Proxy Error", details: err.message }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",  // ⭐ FIX FIX FIX
+          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS"
+        }
+      }
+    );
   }
 }
